@@ -1,0 +1,173 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+name: Build and Deploy Regorus Playground
+
+on:
+  # Trigger on pushes to main branch (when manually updated)
+  push:
+    branches: [ main ]
+  
+  # Allow manual triggering
+  workflow_dispatch:
+  
+  # Trigger on schedule to check for updates (optional - runs daily at 6 AM UTC)
+  schedule:
+    - cron: '0 06 * * *'
+  
+  # Trigger via repository dispatch from source repo (advanced option)
+  repository_dispatch:
+    types: [playground-update]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    steps:
+    - name: Checkout Playground Repository
+      uses: actions/checkout@v4
+      
+    - name: Checkout Source Repository
+      uses: actions/checkout@v4
+      with:
+        repository: anakrish/regorus
+        ref: playground
+        path: regorus-source
+        token: ${{ secrets.SOURCE_REPO_TOKEN || github.token }}
+      
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: wasm32-unknown-unknown
+        override: true
+        
+    - name: Install wasm-pack
+      run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          regorus-source/target/
+        key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('regorus-source/**/Cargo.lock') }}
+      
+    - name: Build WASM Module
+      run: |
+        cd regorus-source/bindings/wasm
+        wasm-pack build --target web --out-dir pkg
+        
+    - name: Prepare Playground Files
+      run: |
+        # Create deployment directory
+        mkdir -p deploy
+        
+        # Copy playground files from source
+        cp -r regorus-source/docs/playground/* deploy/
+        
+        # Copy WASM artifacts
+        mkdir -p deploy/pkg
+        cp -r regorus-source/bindings/wasm/pkg/* deploy/pkg/
+        
+        # Create .nojekyll to bypass Jekyll processing
+        touch deploy/.nojekyll
+        
+        # Ensure we have an index.html in the root
+        if [ ! -f deploy/index.html ]; then
+          echo "Warning: No index.html found in deployment directory"
+          # Create a simple index.html if missing
+          cat > deploy/index.html << 'EOF'
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Regorus Playground</title>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+        </head>
+        <body>
+            <h1>Regorus Playground</h1>
+            <p>Loading playground...</p>
+            <script>
+                // Redirect to main playground file if it exists
+                if (window.location.pathname.endsWith('/')) {
+                    const possibleFiles = ['playground.html', 'main.html', 'app.html'];
+                    for (const file of possibleFiles) {
+                        fetch(file).then(response => {
+                            if (response.ok) {
+                                window.location.href = file;
+                            }
+                        }).catch(() => {});
+                    }
+                }
+            </script>
+        </body>
+        </html>
+        EOF
+        fi
+        
+        # Update README with build info
+        cat > deploy/README.md << 'EOF'
+        # Regorus Playground
+        
+        Interactive Regorus Playground - A web-based environment for experimenting with Rego policies.
+        
+        **🚀 [Launch Playground](https://anakrish.github.io/regorus-playground/)**
+        
+        ## Features
+        
+        - 20+ example policies across multiple domains
+        - Real-time policy evaluation with coverage visualization  
+        - Multiple layout options (split, tabs, full-screen)
+        - Syntax highlighting and Monaco Editor integration
+        - WASM-powered Regorus engine
+        
+        ## About
+        
+        This playground is automatically built and deployed from the [Regorus](https://github.com/anakrish/regorus) repository.
+        
+        - **Source**: [regorus/docs/playground](https://github.com/anakrish/regorus/tree/playground/docs/playground)
+        - **Engine**: [Regorus Rust Library](https://github.com/anakrish/regorus)
+        - **Last Built**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        
+        ## Development
+        
+        To update this playground, push changes to the [playground branch](https://github.com/anakrish/regorus/tree/playground) of the source repository.
+        EOF
+        
+        # Debug output
+        echo "Deployment files prepared:"
+        find deploy -name "*.html" -o -name "*.js" -o -name "*.css" -o -name ".nojekyll" | head -10
+        
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ./deploy
+        
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+      
+    - name: Output deployment info
+      run: |
+        echo "🚀 Playground deployed successfully!"
+        echo "📍 URL: ${{ steps.deployment.outputs.page_url }}"
+        echo "📝 Source commit: Latest from playground branch"

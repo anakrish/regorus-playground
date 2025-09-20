@@ -18,7 +18,7 @@ An interactive web-based playground for writing, testing, and debugging Rego pol
 
 ## 🎯 Quick Start
 
-1. **Visit the Playground**: Navigate to the [live playground](https://your-username.github.io/regorus/playground/)
+1. **Visit the Playground**: Navigate to the [live playground](https://anakrish.github.io/regorus-playground/)
 2. **Select an Example**: Choose from the dropdown menu to load a pre-built policy
 3. **Edit the Policy**: Modify the Rego policy in the left panel
 4. **Update Input/Data**: Provide JSON input and data as needed
@@ -127,7 +127,7 @@ The playground is automatically deployed to GitHub Pages using GitHub Actions:
 1. Enable GitHub Pages in repository settings
 2. Set source to "GitHub Actions"
 3. Push changes to trigger deployment
-4. Access playground at `https://username.github.io/repository/playground/`
+4. Access playground at `https://github.com/anakrish/rego-virtual-machine-playground`
 
 ## 🎨 Customization
 
